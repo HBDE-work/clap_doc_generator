@@ -39,7 +39,7 @@ pub enum Commands {
     },
 
     #[cfg(feature = "jenkins")]
-    /// Create rust binary cli wrapperfor jenkins libraries
+    /// Create rust binary cli wrapper for jenkins libraries
     Jenkins {
         /// Output directory for generated files
         #[arg(short, long)]

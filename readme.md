@@ -42,17 +42,17 @@ Extract clap CLI definitions from Rust source code and generate documentation or
 
 #### Options
 
-| Options | Description |
-|------|------|
+| Options                       | Description                                       |
+| ----------------------------- | ------------------------------------------------- |
 | `-d, --directory <DIRECTORY>` | The directory to scan for Rust projects with clap |
-| `-r, --recursive` | Recursively scan subdirectories for projects |
+| `-r, --recursive`             | Recursively scan subdirectories for projects      |
 
 #### Commands
 
-| Command | Description |
-|---------|-------------|
-| `markdown` | Create clap reference in markdown syntax |
-| `jenkins` | Create rust binary cli wrapperfor jenkins libraries |
+| Command    | Description                                          |
+| ---------- | ---------------------------------------------------- |
+| `markdown` | Create clap reference in markdown syntax             |
+| `jenkins`  | Create rust binary cli wrapper for jenkins libraries |
 
 ### `clapdocs markdown`
 
@@ -60,22 +60,22 @@ Create clap reference in markdown syntax
 
 #### Options
 
-| Options | Description | Default |
-|------|------|------|
-| `--name <NAME>` | The name of the readme file to update | `readme.md` |
+| Options                         | Description                                   | Default                       |
+| ------------------------------- | --------------------------------------------- | ----------------------------- |
+| `--name <NAME>`                 | The name of the readme file to update         | `readme.md`                   |
 | `--start-marker <START-MARKER>` | Marker for the start of the generated section | `<!-- CLAP_DOC_GEN_START -->` |
-| `--end-marker <END-MARKER>` | Marker for the end of the generated section | `<!-- CLAP_DOC_GEN_END -->` |
+| `--end-marker <END-MARKER>`     | Marker for the end of the generated section   | `<!-- CLAP_DOC_GEN_END -->`   |
 
 ### `clapdocs jenkins`
 
-Create rust binary cli wrapperfor jenkins libraries
+Create rust binary cli wrapper for jenkins libraries
 
 #### Options
 
-| Options | Description | Default |
-|------|------|------|
-| `-o, --output-dir <OUTPUT-DIR>` | Output directory for generated files |  |
+| Options                         | Description                                      | Default         |
+| ------------------------------- | ------------------------------------------------ | --------------- |
+| `-o, --output-dir <OUTPUT-DIR>` | Output directory for generated files             |                 |
 | `--package-name <PACKAGE-NAME>` | Package path prefix for generated Groovy classes | `groovypackage` |
-| `--json-output` | Assume all commands emit JSON to stdout |  |
+| `--json-output`                 | Assume all commands emit JSON to stdout          |                 |
 
 <!-- CLAP_DOC_GEN_END -->
