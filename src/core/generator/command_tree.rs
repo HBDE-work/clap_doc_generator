@@ -112,6 +112,7 @@ fn build_arg_info(field: &ParsedField, source: &ParsedSource) -> ArgInfo {
         .unwrap_or_else(|| field.doc_comment.clone());
 
     let is_flag = matches!(field.type_info, FieldType::Bool);
+    let is_positional = attr.short.is_none() && attr.long.is_none();
 
     let value_name = attr
         .value_name
@@ -128,6 +129,16 @@ fn build_arg_info(field: &ParsedField, source: &ParsedSource) -> ArgInfo {
     let required = attr
         .required
         .unwrap_or(matches!(field.type_info, FieldType::Plain(_)) && !is_flag);
+
+    let long_name = resolve_long_name(attr.long.as_deref(), &field.name);
+
+    let short_name = attr.short.and_then(|c| {
+        if c == '\0' {
+            field.name.chars().next()
+        } else {
+            Some(c)
+        }
+    });
 
     let possible_values = if attr.value_enum {
         field
@@ -151,12 +162,29 @@ fn build_arg_info(field: &ParsedField, source: &ParsedSource) -> ArgInfo {
     };
 
     ArgInfo {
+        field_name: field.name.clone(),
         signature,
+        long_name,
+        short_name,
         help,
         default,
         required,
+        is_flag,
+        is_positional,
+        is_repeatable: matches!(field.type_info, FieldType::Vec(_)),
+        env: attr.env.clone(),
         possible_values,
     }
+}
+
+fn resolve_long_name(long_attr: Option<&str>, field_name: &str) -> Option<String> {
+    long_attr.map(|long| {
+        if long.is_empty() {
+            field_name.replace('_', "-")
+        } else {
+            long.to_string()
+        }
+    })
 }
 
 fn build_signature(field: &ParsedField, value_name: &str) -> String {

@@ -7,6 +7,7 @@ use syn::meta::ParseNestedMeta;
 use super::model_parsed::ArgAttr;
 use super::model_parsed::CommandAttr;
 use super::model_parsed::FieldRole;
+use super::utils::to_kebab_case;
 
 pub fn extract_doc_comment(attrs: &[Attribute]) -> String {
     let lines: Vec<String> = attrs
@@ -153,12 +154,30 @@ fn meta_bool(meta: &ParseNestedMeta) -> Option<bool> {
 }
 
 fn meta_lit_to_string(meta: &ParseNestedMeta) -> Option<String> {
-    let lit: Lit = meta.value().ok()?.parse().ok()?;
-    match lit {
-        Lit::Str(s) => Some(s.value()),
-        Lit::Int(i) => Some(i.to_string()),
-        Lit::Float(f) => Some(f.to_string()),
-        Lit::Bool(b) => Some(b.value.to_string()),
-        _ => None,
+    let value = meta.value().ok()?;
+
+    if let Ok(lit) = value.parse::<Lit>() {
+        return match lit {
+            Lit::Str(s) => Some(s.value()),
+            Lit::Int(i) => Some(i.to_string()),
+            Lit::Float(f) => Some(f.to_string()),
+            Lit::Bool(b) => Some(b.value.to_string()),
+            _ => None,
+        };
     }
+
+    if let Ok(expr) = value.parse::<Expr>() {
+        return match &expr {
+            Expr::Path(path) => {
+                let last_segment = path.path.segments.last()?;
+                Some(to_kebab_case(&last_segment.ident.to_string()))
+            }
+            other => {
+                use quote::ToTokens;
+                Some(other.to_token_stream().to_string())
+            }
+        };
+    }
+
+    None
 }

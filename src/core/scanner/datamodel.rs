@@ -1,14 +1,18 @@
 use serde::Deserialize;
+use std::path::Path;
 use std::path::PathBuf;
 
 #[derive(Debug)]
 pub struct Target {
-    /// The readme file to update.
-    pub readme_path: PathBuf,
-    /// The project root (directory containing the Cargo.toml with clap).
+    pub readme_path: Option<PathBuf>,
     pub project_path: PathBuf,
-    /// The project name from Cargo.toml.
     pub name: String,
+}
+
+pub struct ScanOptions<'a> {
+    pub root_dir: &'a Path,
+    pub recursive: bool,
+    pub readme_name: Option<&'a str>,
 }
 
 #[derive(Deserialize)]

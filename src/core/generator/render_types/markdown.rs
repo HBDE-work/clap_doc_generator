@@ -1,9 +1,9 @@
 use std::fmt::Write;
 
-use super::model_command::ArgInfo;
-use super::model_command::CommandInfo;
+use crate::generator::model_command::ArgInfo;
+use crate::generator::model_command::CommandInfo;
 
-pub fn render_markdown(command: &CommandInfo) -> String {
+pub fn render(command: &CommandInfo) -> String {
     let mut output = String::new();
 
     let usage = build_usage_string(command);

@@ -1,7 +1,7 @@
 
 [package]
 name = "clap_doc_generator"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 description = "Automatically generate CLI documentation from clap definitions and update readme files"
 readme = "readme.md"
@@ -9,16 +9,28 @@ repository = "https://github.com/HBDE-work/clap_doc_generator/tree/master"
 license = "MIT"
 keywords = ["cli", "documentation", "clap"]
 categories = ["command-line-utilities"]
+include = ["src/**", "tests/**", "LICENSE", "./readme.md"]
 
+[lib]
+name = "clapdocs"
+path = "src/core/lib.rs"
 
 [[bin]]
 name = "clapdocs"
-path = "src/main.rs"
+path = "src/cli/main.rs"
+
+[features]
+default = ["markdown"]
+markdown = []
+jenkins = []
 
 [dependencies]
 clap = { version = "4.6", features = ["derive"] }
 toml = "1"
 serde = { version = "1", features = ["derive"] }
-ignore = "0.4.25"
+ignore = "0.4"
 syn = { version = "2", features = ["full", "extra-traits"] }
 quote = "1"
+
+[dev-dependencies]
+tempfile = "3.27.0"

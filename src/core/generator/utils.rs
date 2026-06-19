@@ -25,6 +25,7 @@ pub fn read_binary_name(project_path: &Path) -> Result<String, String> {
         .ok_or_else(|| "Could not find package name in Cargo.toml".to_string())
 }
 
+#[cfg(feature = "markdown")]
 pub fn update_readme(
     readme_path: &Path,
     new_docs: &str,
@@ -87,7 +88,8 @@ pub fn to_kebab_case(name: &str) -> String {
     result
 }
 
-/// Find `marker` only when it appears at the start of a line within `text`.
+/// Find `marker` only when it appears at the start of a line within `text`
+#[cfg(feature = "markdown")]
 fn find_line_start_marker(text: &str, marker: &str) -> Option<usize> {
     // Check if the text starts with the marker (position 0 = start of line).
     if text.starts_with(marker) {
