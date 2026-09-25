@@ -28,7 +28,7 @@ pub fn render(
         execution_model,
         json_output,
     );
-    let vars_content = render_vars_entry(&class_name, package_name, execution_model);
+    let vars_content = render_vars_entry(&class_name, package_name, &global_args, execution_model);
 
     let package_path = package_name.replace('.', "/");
 
@@ -149,26 +149,12 @@ fn render_constructor(
     }
 
     for arg in global_args {
-        if arg.is_flag {
-            let default = if arg.default.as_deref() == Some("true") {
-                "true"
-            } else {
-                "false"
-            };
-            params.push(format!(
-                "boolean {} = {}",
-                to_camel_case(&arg.field_name),
-                default
-            ));
-        } else if let Some(ref default) = arg.default {
-            params.push(format!(
-                "String {} = '{}'",
-                to_camel_case(&arg.field_name),
-                escape_groovy_string(default)
-            ));
-        } else {
-            params.push(format!("String {} = null", to_camel_case(&arg.field_name)));
-        }
+        let groovy_type = if arg.is_flag { "boolean" } else { "String" };
+        params.push(format!(
+            "{groovy_type} {} = {}",
+            to_camel_case(&arg.field_name),
+            arg_default_literal(arg)
+        ));
     }
 
     render_signature(output, &format!("    {class_name}"), &params);
@@ -491,6 +477,7 @@ fn pipeline_step_name(execution_model: ExecutionModel) -> Option<&'static str> {
 fn render_vars_entry(
     class_name: &str,
     package_name: &str,
+    global_args: &[&ArgInfo],
     execution_model: ExecutionModel,
 ) -> String {
     let mut output = String::new();
@@ -499,16 +486,32 @@ fn render_vars_entry(
     let _ = writeln!(output, "import {package_name}.{class_name}");
     let _ = writeln!(output);
 
+    let mut ctor_args = Vec::new();
+    if execution_model != ExecutionModel::Jvm {
+        ctor_args.push("pipeline".to_string());
+    }
+    for arg in global_args {
+        let camel = to_camel_case(&arg.field_name);
+        ctor_args.push(format!(
+            "config.get('{camel}', {})",
+            arg_default_literal(arg)
+        ));
+    }
+
     if execution_model == ExecutionModel::Jvm {
         let _ = writeln!(output, "{class_name} call(Map config = [:]) {{");
-        let _ = writeln!(output, "    return new {class_name}(*:config)");
     } else {
         let _ = writeln!(
             output,
             "{class_name} call(Script pipeline, Map config = [:]) {{"
         );
-        let _ = writeln!(output, "    return new {class_name}(pipeline, *:config)");
     }
+    render_signature(
+        &mut output,
+        &format!("    return new {class_name}"),
+        &ctor_args,
+    );
+    let _ = writeln!(output);
     let _ = writeln!(output, "}}");
     output
 }
@@ -553,6 +556,20 @@ fn to_camel_case(name: &str) -> String {
     match chars.next() {
         Some(first) => first.to_lowercase().to_string() + chars.as_str(),
         None => String::new(),
+    }
+}
+
+fn arg_default_literal(arg: &ArgInfo) -> String {
+    if arg.is_flag {
+        if arg.default.as_deref() == Some("true") {
+            "true".to_string()
+        } else {
+            "false".to_string()
+        }
+    } else if let Some(ref default) = arg.default {
+        format!("'{}'", escape_groovy_string(default))
+    } else {
+        "null".to_string()
     }
 }
 
