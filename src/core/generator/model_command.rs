@@ -42,3 +42,18 @@ pub struct CommandInfo {
     pub args: Vec<ArgInfo>,
     pub subcommands: Vec<CommandInfo>,
 }
+
+/// Selects how generated Jenkins library code invokes the wrapped binary
+#[cfg_attr(not(feature = "jenkins"), allow(dead_code))]
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, clap::ValueEnum)]
+pub enum ExecutionModel {
+    /// Linux shell, via the Jenkins `sh` pipeline step
+    #[default]
+    Sh,
+    /// Windows PowerShell, via the Jenkins `powershell` pipeline step
+    Ps,
+    /// Windows batch, via the Jenkins `bat` pipeline step
+    Bat,
+    /// Trusted library code running on the controller itself, via `ProcessBuilder`
+    Jvm,
+}

@@ -56,6 +56,7 @@ fn main() {
         Commands::Jenkins {
             output_dir,
             package_name,
+            execution_model,
             json_output,
         } => {
             use clapdocs::generate_jenkins;
@@ -85,6 +86,7 @@ fn main() {
                     &target.project_path,
                     output_dir,
                     &package_name,
+                    execution_model,
                     json_output,
                 ))
             });

@@ -1,6 +1,9 @@
 use clap::Parser;
 use clap::Subcommand;
 
+#[cfg(feature = "jenkins")]
+use clapdocs::ExecutionModel;
+
 #[derive(Parser, Debug)]
 #[command(
     name = "clap_doc_generator",
@@ -48,6 +51,10 @@ pub enum Commands {
         /// Package path prefix for generated Groovy classes
         #[arg(long, default_value = "groovypackage")]
         package_name: String,
+
+        /// Execution model used by generated code to invoke the wrapped binary
+        #[arg(long, value_enum, default_value = "sh")]
+        execution_model: ExecutionModel,
 
         /// Assume all commands emit JSON to stdout
         #[arg(long)]
