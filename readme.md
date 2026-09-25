@@ -80,3 +80,44 @@ Create rust binary cli wrapper for jenkins libraries
 | `--json-output`                       | Assume all commands emit JSON to stdout                             |                 |                          |
 
 <!-- CLAP_DOC_GEN_END -->
+
+## Library Usage
+
+**usage within build.rs:**
+
+the ideal case is that the binary will always create valid json output
+
+```toml
+# Cargo.toml
+[build-dependencies]
+clap_doc_generator = { version = "0.3.1", features = ["jenkins"]}
+```
+
+```rust
+// build.rs
+use std::path::PathBuf;
+
+fn main() -> Result<(), String> {
+    let toml_path = PathBuf::from(env!("CARGO_MANIFEST_PATH"));
+    let project_path = toml_path
+        .parent()
+        .expect("Cannot establish manifest directory");
+    let out_dir = project_path.join("groovy_binding");
+    let pkg_name = env!("CARGO_PKG_NAME");
+    let execution_model = clapdocs::ExecutionModel::Jvm;
+
+    clapdocs::generate_docs(
+        project_path,
+        project_path.join("readme.md").as_path(),
+        "<!-- CLAP_DOC_GEN_START -->",
+        "<!-- CLAP_DOC_GEN_END -->",
+    )?;
+    clapdocs::generate_jenkins(
+        project_path,
+        out_dir.as_path(),
+        pkg_name,
+        execution_model,
+        true,
+    )
+}
+```
