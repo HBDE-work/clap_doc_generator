@@ -9,3 +9,5 @@ pub use self::scanner::find::find_projects;
 pub use self::generator::generate_docs;
 #[cfg(feature = "jenkins")]
 pub use self::generator::generate_jenkins;
+#[cfg(feature = "jenkins")]
+pub use self::generator::model_command::ExecutionModel;

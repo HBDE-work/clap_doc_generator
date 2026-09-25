@@ -4,11 +4,13 @@ use std::path::Path;
 
 use crate::generator::model_command::ArgInfo;
 use crate::generator::model_command::CommandInfo;
+use crate::generator::model_command::ExecutionModel;
 
 pub fn render(
     command: &CommandInfo,
     output_dir: &Path,
     package_name: &str,
+    execution_model: ExecutionModel,
     json_output: bool,
 ) -> Result<(), String> {
     let class_name = to_pascal_case(&command.name);
@@ -23,9 +25,10 @@ pub fn render(
         binary_name,
         package_name,
         &global_args,
+        execution_model,
         json_output,
     );
-    let vars_content = render_vars_entry(&class_name, package_name);
+    let vars_content = render_vars_entry(&class_name, package_name, execution_model);
 
     let package_path = package_name.replace('.', "/");
 
@@ -54,6 +57,7 @@ fn render_src_class(
     binary_name: &str,
     package_name: &str,
     global_args: &[&ArgInfo],
+    execution_model: ExecutionModel,
     json_output: bool,
 ) -> String {
     let mut output = String::new();
@@ -62,6 +66,9 @@ fn render_src_class(
     let _ = writeln!(output, "package {package_name}");
     let _ = writeln!(output);
     let _ = writeln!(output, "import groovy.transform.CompileDynamic");
+    if execution_model == ExecutionModel::Jvm {
+        let _ = writeln!(output, "import groovy.json.JsonSlurper");
+    }
     let _ = writeln!(output);
 
     if !command.about.is_empty() {
@@ -80,7 +87,9 @@ fn render_src_class(
         "    private static final long serialVersionUID = 1L"
     );
     let _ = writeln!(output);
-    let _ = writeln!(output, "    private final Script pipeline");
+    if execution_model != ExecutionModel::Jvm {
+        let _ = writeln!(output, "    private final Script pipeline");
+    }
     let _ = writeln!(output, "    private final String cmd");
 
     for arg in global_args {
@@ -100,7 +109,13 @@ fn render_src_class(
     }
 
     let _ = writeln!(output);
-    render_constructor(&mut output, class_name, binary_name, global_args);
+    render_constructor(
+        &mut output,
+        class_name,
+        binary_name,
+        global_args,
+        execution_model,
+    );
     let _ = writeln!(output);
 
     for sub in &command.subcommands {
@@ -113,9 +128,9 @@ fn render_src_class(
         let _ = writeln!(output);
     }
 
-    render_version_method(&mut output);
+    render_version_method(&mut output, execution_model);
     let _ = writeln!(output);
-    render_exec_helpers(&mut output);
+    render_exec_helpers(&mut output, execution_model);
 
     let _ = writeln!(output, "}}");
     output
@@ -126,8 +141,12 @@ fn render_constructor(
     class_name: &str,
     binary_name: &str,
     global_args: &[&ArgInfo],
+    execution_model: ExecutionModel,
 ) {
-    let mut params = vec!["Script pipeline".to_string()];
+    let mut params = Vec::new();
+    if execution_model != ExecutionModel::Jvm {
+        params.push("Script pipeline".to_string());
+    }
 
     for arg in global_args {
         if arg.is_flag {
@@ -155,7 +174,9 @@ fn render_constructor(
     render_signature(output, &format!("    {class_name}"), &params);
 
     let _ = writeln!(output, " {{");
-    let _ = writeln!(output, "        this.pipeline = pipeline");
+    if execution_model != ExecutionModel::Jvm {
+        let _ = writeln!(output, "        this.pipeline = pipeline");
+    }
     let _ = writeln!(output, "        this.cmd = '{binary_name}'");
 
     for arg in global_args {
@@ -372,47 +393,122 @@ fn render_global_args_assembly(output: &mut String, global_args: &[&ArgInfo]) {
     }
 }
 
-fn render_version_method(output: &mut String) {
+fn render_version_method(output: &mut String, execution_model: ExecutionModel) {
+    if let Some(step) = pipeline_step_name(execution_model) {
+        let _ = writeln!(output, "    String version() {{");
+        let _ = writeln!(output, "        return this.pipeline.{step}(");
+        let _ = writeln!(output, "            script: \"${{this.cmd}} --version\",");
+        let _ = writeln!(output, "            returnStdout: true");
+        let _ = writeln!(output, "        ).trim()");
+        let _ = writeln!(output, "    }}");
+        return;
+    }
+
     let _ = writeln!(output, "    String version() {{");
-    let _ = writeln!(output, "        return this.pipeline.sh(");
-    let _ = writeln!(output, "            script: \"${{this.cmd}} --version\",");
-    let _ = writeln!(output, "            returnStdout: true");
-    let _ = writeln!(output, "        ).trim()");
+    let _ = writeln!(output, "        return exec([this.cmd, '--version'])");
     let _ = writeln!(output, "    }}");
 }
 
-fn render_exec_helpers(output: &mut String) {
-    let _ = writeln!(output, "    private String exec(List command) {{");
-    let _ = writeln!(output, "        return this.pipeline.sh(");
-    let _ = writeln!(output, "            script: command.join(' '),");
-    let _ = writeln!(output, "            returnStdout: true");
-    let _ = writeln!(output, "        ).trim()");
+fn render_exec_helpers(output: &mut String, execution_model: ExecutionModel) {
+    if let Some(step) = pipeline_step_name(execution_model) {
+        let _ = writeln!(output, "    private String exec(List command) {{");
+        let _ = writeln!(output, "        return this.pipeline.{step}(");
+        let _ = writeln!(output, "            script: command.join(' '),");
+        let _ = writeln!(output, "            returnStdout: true");
+        let _ = writeln!(output, "        ).trim()");
+        let _ = writeln!(output, "    }}");
+        let _ = writeln!(output);
+        let _ = writeln!(output, "    private int execStatus(List command) {{");
+        let _ = writeln!(output, "        return this.pipeline.{step}(");
+        let _ = writeln!(output, "            script: command.join(' '),");
+        let _ = writeln!(output, "            returnStatus: true");
+        let _ = writeln!(output, "        )");
+        let _ = writeln!(output, "    }}");
+        let _ = writeln!(output);
+        let _ = writeln!(output, "    private Map execJson(List command) {{");
+        let _ = writeln!(output, "        String json = exec(command)");
+        let _ = writeln!(output, "        return this.pipeline.readJSON(text: json)");
+        let _ = writeln!(output, "    }}");
+        return;
+    }
+
+    let _ = writeln!(output, "    private String exec(List<String> command) {{");
+    let _ = writeln!(
+        output,
+        "        Process process = new ProcessBuilder(command).start()"
+    );
+    let _ = writeln!(output, "        StringBuilder stdout = new StringBuilder()");
+    let _ = writeln!(output, "        StringBuilder stderr = new StringBuilder()");
+    let _ = writeln!(
+        output,
+        "        process.waitForProcessOutput(stdout, stderr)"
+    );
+    let _ = writeln!(output, "        int exitCode = process.exitValue()");
+    let _ = writeln!(output, "        if (exitCode != 0) {{");
+    let _ = writeln!(
+        output,
+        "            throw new RuntimeException(\"Command failed (exit ${{exitCode}}): ${{stderr}}\")"
+    );
+    let _ = writeln!(output, "        }}");
+    let _ = writeln!(output, "        return stdout.toString().trim()");
     let _ = writeln!(output, "    }}");
     let _ = writeln!(output);
-    let _ = writeln!(output, "    private int execStatus(List command) {{");
-    let _ = writeln!(output, "        return this.pipeline.sh(");
-    let _ = writeln!(output, "            script: command.join(' '),");
-    let _ = writeln!(output, "            returnStatus: true");
-    let _ = writeln!(output, "        )");
+    let _ = writeln!(
+        output,
+        "    private int execStatus(List<String> command) {{"
+    );
+    let _ = writeln!(
+        output,
+        "        Process process = new ProcessBuilder(command).start()"
+    );
+    let _ = writeln!(
+        output,
+        "        process.waitForProcessOutput(new StringBuilder(), new StringBuilder())"
+    );
+    let _ = writeln!(output, "        return process.exitValue()");
     let _ = writeln!(output, "    }}");
     let _ = writeln!(output);
-    let _ = writeln!(output, "    private Map execJson(List command) {{");
+    let _ = writeln!(output, "    private Map execJson(List<String> command) {{");
     let _ = writeln!(output, "        String json = exec(command)");
-    let _ = writeln!(output, "        return this.pipeline.readJSON(text: json)");
+    let _ = writeln!(
+        output,
+        "        return new JsonSlurper().parseText(json) as Map"
+    );
     let _ = writeln!(output, "    }}");
 }
 
-fn render_vars_entry(class_name: &str, package_name: &str) -> String {
+/// Returns the Jenkins pipeline step name backing `sh`/`ps`/`bat` execution
+/// models, or `None` for `jvm` (which has no pipeline step dependency).
+fn pipeline_step_name(execution_model: ExecutionModel) -> Option<&'static str> {
+    match execution_model {
+        ExecutionModel::Sh => Some("sh"),
+        ExecutionModel::Ps => Some("powershell"),
+        ExecutionModel::Bat => Some("bat"),
+        ExecutionModel::Jvm => None,
+    }
+}
+
+fn render_vars_entry(
+    class_name: &str,
+    package_name: &str,
+    execution_model: ExecutionModel,
+) -> String {
     let mut output = String::new();
     let _ = writeln!(output, "#!/usr/bin/env groovy");
     let _ = writeln!(output);
     let _ = writeln!(output, "import {package_name}.{class_name}");
     let _ = writeln!(output);
-    let _ = writeln!(
-        output,
-        "{class_name} call(Script pipeline, Map config = [:]) {{"
-    );
-    let _ = writeln!(output, "    return new {class_name}(pipeline, *:config)");
+
+    if execution_model == ExecutionModel::Jvm {
+        let _ = writeln!(output, "{class_name} call(Map config = [:]) {{");
+        let _ = writeln!(output, "    return new {class_name}(*:config)");
+    } else {
+        let _ = writeln!(
+            output,
+            "{class_name} call(Script pipeline, Map config = [:]) {{"
+        );
+        let _ = writeln!(output, "    return new {class_name}(pipeline, *:config)");
+    }
     let _ = writeln!(output, "}}");
     output
 }

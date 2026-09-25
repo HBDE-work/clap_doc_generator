@@ -11,7 +11,6 @@ Extract clap CLI definitions from Rust source code and generate a command line r
 - Parses `#[derive(Parser)]`, `#[derive(Args)]`, `#[derive(Subcommand)]` and `#[derive(ValueEnum)]` directly from source
 - Handles nested subcommands, `#[command(flatten)]`, and `#[command(subcommand)]`
 
-
 ## Features
 
 ### Markdown (default)
@@ -36,6 +35,7 @@ This installs the binary as `clapdocs` in your Cargo bin directory
 ## CLI Reference
 
 <!-- CLAP_DOC_GEN_START -->
+
 **Usage:** `clapdocs [OPTIONS] <COMMAND>`
 
 Extract clap CLI definitions from Rust source code and generate documentation or language bindings
@@ -72,10 +72,11 @@ Create rust binary cli wrapper for jenkins libraries
 
 #### Options
 
-| Options                         | Description                                      | Default         |
-| ------------------------------- | ------------------------------------------------ | --------------- |
-| `-o, --output-dir <OUTPUT-DIR>` | Output directory for generated files             |                 |
-| `--package-name <PACKAGE-NAME>` | Package path prefix for generated Groovy classes | `groovypackage` |
-| `--json-output`                 | Assume all commands emit JSON to stdout          |                 |
+| Options                               | Description                                                         | Default         | Values                   |
+| ------------------------------------- | ------------------------------------------------------------------- | --------------- | ------------------------ |
+| `-o, --output-dir <OUTPUT-DIR>`       | Output directory for generated files                                |                 |                          |
+| `--package-name <PACKAGE-NAME>`       | Package path prefix for generated Groovy classes                    | `groovypackage` |                          |
+| `--execution-model <EXECUTION-MODEL>` | Execution model used by generated code to invoke the wrapped binary | `sh`            | `sh`, `ps`, `bat`, `jvm` |
+| `--json-output`                       | Assume all commands emit JSON to stdout                             |                 |                          |
 
 <!-- CLAP_DOC_GEN_END -->

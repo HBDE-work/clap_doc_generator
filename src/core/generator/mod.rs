@@ -33,10 +33,17 @@ pub fn generate_jenkins(
     project_path: &Path,
     output_dir: &Path,
     package_name: &str,
+    execution_model: model_command::ExecutionModel,
     json_output: bool,
 ) -> Result<(), String> {
     let binary_name = read_binary_name(project_path)?;
     let command_tree = analyze_project_source(project_path, &binary_name)?;
 
-    render_types::jenkins_library::render(&command_tree, output_dir, package_name, json_output)
+    render_types::jenkins_library::render(
+        &command_tree,
+        output_dir,
+        package_name,
+        execution_model,
+        json_output,
+    )
 }
