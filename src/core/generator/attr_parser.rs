@@ -40,6 +40,12 @@ pub fn extract_command_attr(attrs: &[Attribute]) -> CommandAttr {
                 result.name = meta_str(&meta);
             } else if meta.path.is_ident("about") {
                 result.about = meta_str(&meta);
+            } else {
+                // Consume (and discard) the value of any unrecognized key
+                // (e.g. `long_about`), so an unhandled key doesn't leave
+                // unparsed tokens that would abort parsing of the rest of
+                // this attribute
+                let _ = meta.value().and_then(|value| value.parse::<Expr>());
             }
             Ok(())
         });
@@ -78,6 +84,14 @@ pub fn extract_arg_attr(attrs: &[Attribute]) -> ArgAttr {
                 result.value_enum = true;
             } else if meta.path.is_ident("env") {
                 result.env = Some(meta_str(&meta).unwrap_or_default());
+            } else if meta.path.is_ident("action") {
+                result.is_count = meta_lit_to_string(&meta).as_deref() == Some("count");
+            } else {
+                // Consume (and discard) the value of any unrecognized key
+                // (e.g. `global`, `num_args`), so an unhandled key doesn't
+                // leave unparsed tokens that would abort parsing of the
+                // rest of this attribute
+                let _ = meta.value().and_then(|value| value.parse::<Expr>());
             }
             Ok(())
         });

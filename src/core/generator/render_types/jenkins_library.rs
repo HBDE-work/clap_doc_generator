@@ -102,7 +102,7 @@ fn render_src_class(
         } else {
             let _ = writeln!(
                 output,
-                "    private final String {}",
+                "    private final Object {}",
                 to_camel_case(&arg.field_name)
             );
         }
@@ -149,7 +149,7 @@ fn render_constructor(
     }
 
     for arg in global_args {
-        let groovy_type = if arg.is_flag { "boolean" } else { "String" };
+        let groovy_type = if arg.is_flag { "boolean" } else { "Object" };
         params.push(format!(
             "{groovy_type} {} = {}",
             to_camel_case(&arg.field_name),
@@ -192,7 +192,7 @@ fn render_subcommand_method(
 
     let mut params = Vec::new();
     for arg in &required_args {
-        let groovy_type = if arg.is_repeatable { "List" } else { "String" };
+        let groovy_type = if arg.is_repeatable { "List" } else { "Object" };
         params.push(format!("{groovy_type} {}", to_camel_case(&arg.field_name)));
     }
     if !optional_args.is_empty() {
@@ -217,20 +217,22 @@ fn render_subcommand_method(
         if arg.is_positional {
             if arg.is_repeatable {
                 let _ = writeln!(output, "        {camel}.each {{ entry ->");
-                let _ = writeln!(output, "            command.add(entry)");
+                let _ = writeln!(output, "            command.add(entry.toString())");
                 let _ = writeln!(output, "        }}");
             } else {
-                let _ = writeln!(output, "        command.add({camel})");
+                let _ = writeln!(output, "        command.add({camel}.toString())");
             }
-        } else if let Some(ref long) = arg.long_name {
-            if arg.is_repeatable {
+        } else if let Some(token) = arg_flag_token(arg) {
+            if arg.is_count {
+                render_count_arg_assembly(output, &camel, &camel, &token);
+            } else if arg.is_repeatable {
                 let _ = writeln!(output, "        {camel}.each {{ entry ->");
-                let _ = writeln!(output, "            command.add('--{long}')");
-                let _ = writeln!(output, "            command.add(entry)");
+                let _ = writeln!(output, "            command.add('{token}')");
+                let _ = writeln!(output, "            command.add(entry.toString())");
                 let _ = writeln!(output, "        }}");
             } else {
-                let _ = writeln!(output, "        command.add('--{long}')");
-                let _ = writeln!(output, "        command.add({camel})");
+                let _ = writeln!(output, "        command.add('{token}')");
+                let _ = writeln!(output, "        command.add({camel}.toString())");
             }
         }
     }
@@ -239,30 +241,29 @@ fn render_subcommand_method(
         let _ = writeln!(output);
         for arg in &optional_args {
             let camel = to_camel_case(&arg.field_name);
-            if let Some(ref long) = arg.long_name {
-                if arg.is_flag {
-                    let _ = writeln!(output, "        if (options.get('{camel}')) {{");
-                    let _ = writeln!(output, "            command.add('--{long}')");
-                    let _ = writeln!(output, "        }}");
-                } else if arg.is_repeatable {
-                    let _ = writeln!(output, "        if (options.get('{camel}') != null) {{");
-                    let _ = writeln!(
-                        output,
-                        "            options.get('{camel}').each {{ entry ->"
-                    );
-                    let _ = writeln!(output, "                command.add('--{long}')");
-                    let _ = writeln!(output, "                command.add(entry)");
-                    let _ = writeln!(output, "            }}");
-                    let _ = writeln!(output, "        }}");
-                } else {
-                    let _ = writeln!(output, "        if (options.get('{camel}') != null) {{");
-                    let _ = writeln!(output, "            command.add('--{long}')");
-                    let _ = writeln!(
-                        output,
-                        "            command.add(options.get('{camel}').toString())"
-                    );
-                    let _ = writeln!(output, "        }}");
-                }
+            let Some(token) = arg_flag_token(arg) else {
+                continue;
+            };
+            let accessor = format!("options.get('{camel}')");
+
+            if arg.is_count {
+                render_count_arg_assembly(output, &camel, &accessor, &token);
+            } else if arg.is_flag {
+                let _ = writeln!(output, "        if ({accessor}) {{");
+                let _ = writeln!(output, "            command.add('{token}')");
+                let _ = writeln!(output, "        }}");
+            } else if arg.is_repeatable {
+                let _ = writeln!(output, "        if ({accessor} != null) {{");
+                let _ = writeln!(output, "            {accessor}.each {{ entry ->");
+                let _ = writeln!(output, "                command.add('{token}')");
+                let _ = writeln!(output, "                command.add(entry.toString())");
+                let _ = writeln!(output, "            }}");
+                let _ = writeln!(output, "        }}");
+            } else {
+                let _ = writeln!(output, "        if ({accessor} != null) {{");
+                let _ = writeln!(output, "            command.add('{token}')");
+                let _ = writeln!(output, "            command.add({accessor}.toString())");
+                let _ = writeln!(output, "        }}");
             }
         }
     }
@@ -283,7 +284,7 @@ fn render_direct_invocation_method(output: &mut String, command: &CommandInfo, j
 
     let mut params = Vec::new();
     for arg in &required_args {
-        let groovy_type = if arg.is_repeatable { "List" } else { "String" };
+        let groovy_type = if arg.is_repeatable { "List" } else { "Object" };
         params.push(format!("{groovy_type} {}", to_camel_case(&arg.field_name)));
     }
     if !optional_args.is_empty() {
@@ -302,20 +303,22 @@ fn render_direct_invocation_method(output: &mut String, command: &CommandInfo, j
         if arg.is_positional {
             if arg.is_repeatable {
                 let _ = writeln!(output, "        {camel}.each {{ entry ->");
-                let _ = writeln!(output, "            command.add(entry)");
+                let _ = writeln!(output, "            command.add(entry.toString())");
                 let _ = writeln!(output, "        }}");
             } else {
-                let _ = writeln!(output, "        command.add({camel})");
+                let _ = writeln!(output, "        command.add({camel}.toString())");
             }
-        } else if let Some(ref long) = arg.long_name {
-            if arg.is_repeatable {
+        } else if let Some(token) = arg_flag_token(arg) {
+            if arg.is_count {
+                render_count_arg_assembly(output, &camel, &camel, &token);
+            } else if arg.is_repeatable {
                 let _ = writeln!(output, "        {camel}.each {{ entry ->");
-                let _ = writeln!(output, "            command.add('--{long}')");
-                let _ = writeln!(output, "            command.add(entry)");
+                let _ = writeln!(output, "            command.add('{token}')");
+                let _ = writeln!(output, "            command.add(entry.toString())");
                 let _ = writeln!(output, "        }}");
             } else {
-                let _ = writeln!(output, "        command.add('--{long}')");
-                let _ = writeln!(output, "        command.add({camel})");
+                let _ = writeln!(output, "        command.add('{token}')");
+                let _ = writeln!(output, "        command.add({camel}.toString())");
             }
         }
     }
@@ -323,30 +326,29 @@ fn render_direct_invocation_method(output: &mut String, command: &CommandInfo, j
     if !optional_args.is_empty() {
         for arg in &optional_args {
             let camel = to_camel_case(&arg.field_name);
-            if let Some(ref long) = arg.long_name {
-                if arg.is_flag {
-                    let _ = writeln!(output, "        if (options.get('{camel}')) {{");
-                    let _ = writeln!(output, "            command.add('--{long}')");
-                    let _ = writeln!(output, "        }}");
-                } else if arg.is_repeatable {
-                    let _ = writeln!(output, "        if (options.get('{camel}') != null) {{");
-                    let _ = writeln!(
-                        output,
-                        "            options.get('{camel}').each {{ entry ->"
-                    );
-                    let _ = writeln!(output, "                command.add('--{long}')");
-                    let _ = writeln!(output, "                command.add(entry)");
-                    let _ = writeln!(output, "            }}");
-                    let _ = writeln!(output, "        }}");
-                } else {
-                    let _ = writeln!(output, "        if (options.get('{camel}') != null) {{");
-                    let _ = writeln!(output, "            command.add('--{long}')");
-                    let _ = writeln!(
-                        output,
-                        "            command.add(options.get('{camel}').toString())"
-                    );
-                    let _ = writeln!(output, "        }}");
-                }
+            let Some(token) = arg_flag_token(arg) else {
+                continue;
+            };
+            let accessor = format!("options.get('{camel}')");
+
+            if arg.is_count {
+                render_count_arg_assembly(output, &camel, &accessor, &token);
+            } else if arg.is_flag {
+                let _ = writeln!(output, "        if ({accessor}) {{");
+                let _ = writeln!(output, "            command.add('{token}')");
+                let _ = writeln!(output, "        }}");
+            } else if arg.is_repeatable {
+                let _ = writeln!(output, "        if ({accessor} != null) {{");
+                let _ = writeln!(output, "            {accessor}.each {{ entry ->");
+                let _ = writeln!(output, "                command.add('{token}')");
+                let _ = writeln!(output, "                command.add(entry.toString())");
+                let _ = writeln!(output, "            }}");
+                let _ = writeln!(output, "        }}");
+            } else {
+                let _ = writeln!(output, "        if ({accessor} != null) {{");
+                let _ = writeln!(output, "            command.add('{token}')");
+                let _ = writeln!(output, "            command.add({accessor}.toString())");
+                let _ = writeln!(output, "        }}");
             }
         }
     }
@@ -357,20 +359,57 @@ fn render_direct_invocation_method(output: &mut String, command: &CommandInfo, j
     let _ = writeln!(output, "    }}");
 }
 
+fn arg_flag_token(arg: &ArgInfo) -> Option<String> {
+    if let Some(ref long) = arg.long_name {
+        Some(format!("--{long}"))
+    } else {
+        arg.short_name.map(|short| format!("-{short}"))
+    }
+}
+
+fn render_count_arg_assembly(output: &mut String, camel: &str, accessor: &str, token: &str) {
+    let _ = writeln!(output, "        if ({accessor}) {{");
+    let _ = writeln!(output, "            int {camel}Count = 1");
+    let _ = writeln!(output, "            if ({accessor} instanceof Number) {{");
+    let _ = writeln!(
+        output,
+        "                {camel}Count = ({accessor}).intValue()"
+    );
+    let _ = writeln!(
+        output,
+        "            }} else if ({accessor} instanceof CharSequence && ({accessor}).isInteger()) {{"
+    );
+    let _ = writeln!(
+        output,
+        "                {camel}Count = ({accessor}).toInteger()"
+    );
+    let _ = writeln!(output, "            }}");
+    let _ = writeln!(
+        output,
+        "            {camel}Count.times {{ command.add('{token}') }}"
+    );
+    let _ = writeln!(output, "        }}");
+}
+
 fn render_global_args_assembly(output: &mut String, global_args: &[&ArgInfo]) {
     for arg in global_args {
         let camel = to_camel_case(&arg.field_name);
-        if let Some(ref long) = arg.long_name {
-            if arg.is_flag {
-                let _ = writeln!(output, "        if (this.{camel}) {{");
-                let _ = writeln!(output, "            command.add('--{long}')");
-                let _ = writeln!(output, "        }}");
-            } else {
-                let _ = writeln!(output, "        if (this.{camel} != null) {{");
-                let _ = writeln!(output, "            command.add('--{long}')");
-                let _ = writeln!(output, "            command.add(this.{camel})");
-                let _ = writeln!(output, "        }}");
-            }
+        let Some(token) = arg_flag_token(arg) else {
+            continue;
+        };
+        let accessor = format!("this.{camel}");
+
+        if arg.is_count {
+            render_count_arg_assembly(output, &camel, &accessor, &token);
+        } else if arg.is_flag {
+            let _ = writeln!(output, "        if ({accessor}) {{");
+            let _ = writeln!(output, "            command.add('{token}')");
+            let _ = writeln!(output, "        }}");
+        } else {
+            let _ = writeln!(output, "        if ({accessor} != null) {{");
+            let _ = writeln!(output, "            command.add('{token}')");
+            let _ = writeln!(output, "            command.add({accessor}.toString())");
+            let _ = writeln!(output, "        }}");
         }
     }
 

@@ -28,6 +28,9 @@ pub struct ArgInfo {
     #[cfg_attr(not(feature = "jenkins"), allow(dead_code))]
     pub is_repeatable: bool,
 
+    #[cfg_attr(not(feature = "jenkins"), allow(dead_code))]
+    pub is_count: bool,
+
     #[allow(dead_code)]
     pub env: Option<String>,
 

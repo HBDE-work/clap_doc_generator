@@ -172,6 +172,7 @@ fn build_arg_info(field: &ParsedField, source: &ParsedSource) -> ArgInfo {
         is_flag,
         is_positional,
         is_repeatable: matches!(field.type_info, FieldType::Vec(_)),
+        is_count: attr.is_count,
         env: attr.env.clone(),
         possible_values,
     }

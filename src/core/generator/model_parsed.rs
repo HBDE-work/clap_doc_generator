@@ -11,6 +11,7 @@ pub struct ArgAttr {
     pub hide: bool,
     pub value_enum: bool,
     pub env: Option<String>,
+    pub is_count: bool,
 }
 
 #[derive(Debug, Clone, Default)]
