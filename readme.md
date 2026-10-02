@@ -90,7 +90,7 @@ the ideal case is that the binary will always create valid json output
 ```toml
 # Cargo.toml
 [build-dependencies]
-clap_doc_generator = { version = "0.3.1", features = ["markdown", "jenkins"]}
+clap_doc_generator = { version = "0.4.1", features = ["markdown", "jenkins"]}
 ```
 
 ```rust
@@ -106,18 +106,25 @@ fn main() -> Result<(), String> {
     let pkg_name = env!("CARGO_PKG_NAME");
     let execution_model = clapdocs::ExecutionModel::Jvm;
 
-    clapdocs::generate_docs(
+    // generate CLI Documentation in Markdown
+    let readme_path = &project_path.join("readme.md");
+    let markdown_config = clapdocs::generator::MarkdownConfig {
         project_path,
-        project_path.join("readme.md").as_path(),
-        "<!-- CLAP_DOC_GEN_START -->",
-        "<!-- CLAP_DOC_GEN_END -->",
-    )?;
-    clapdocs::generate_jenkins(
+        readme_path,
+        start_marker: "<!-- CLAP_DOC_GEN_START -->",
+        end_marker: "<!-- CLAP_DOC_GEN_END -->",
+    };
+    clapdocs::generate_docs(markdown_config)?;
+
+    // generate Jenkins Library Glue with stubs
+    let jenkins_config = clapdocs::generator::JenkinsLibraryConfig {
         project_path,
-        out_dir.as_path(),
-        pkg_name,
-        execution_model,
-        true,
-    )
+        output_dir: out_dir.as_path(),
+        package_name: groovypackage_name,
+        execution_model: clapdocs::ExecutionModel::Jvm,
+        json_output: true,
+        stubs: true,
+    };
+    clapdocs::generate_jenkins(jenkins_config)?;
 }
 ```
