@@ -11,33 +11,38 @@ pub mod model_command;
 
 use std::path::Path;
 
+use self::model_command::CommandInfo;
 use self::source_analysis::analyze_project_source;
 use self::utils::read_binary_name;
 
+#[cfg(feature = "jenkins")]
+pub use self::render_types::jenkins_library::JenkinsLibraryConfig;
 #[cfg(feature = "markdown")]
-pub fn generate_docs(
-    project_path: &Path,
-    readme_path: &Path,
-    start_marker: &str,
-    end_marker: &str,
-) -> Result<(), String> {
-    let binary_name = read_binary_name(project_path)?;
-    let command_tree = analyze_project_source(project_path, &binary_name)?;
-    let markdown = render_types::markdown::render(&command_tree);
+pub use self::render_types::markdown::MarkdownConfig;
 
+#[cfg(feature = "markdown")]
+pub fn generate_docs(markdown_config: MarkdownConfig) -> Result<(), String> {
+    let project_path = markdown_config.project_path;
+    let readme_path = markdown_config.readme_path;
+    let start_marker = markdown_config.start_marker;
+    let end_marker = markdown_config.end_marker;
+
+    let command_tree = read_source(project_path)?;
+
+    let markdown = render_types::markdown::render(&command_tree);
     utils::update_readme(readme_path, &markdown, start_marker, end_marker)
 }
 
 #[cfg(feature = "jenkins")]
-pub fn generate_jenkins(
-    project_path: &Path,
-    output_dir: &Path,
-    package_name: &str,
-    execution_model: model_command::ExecutionModel,
-    json_output: bool,
-) -> Result<(), String> {
-    let binary_name = read_binary_name(project_path)?;
-    let command_tree = analyze_project_source(project_path, &binary_name)?;
+pub fn generate_jenkins(jenkins_config: JenkinsLibraryConfig) -> Result<(), String> {
+    let project_path = jenkins_config.project_path;
+    let output_dir = jenkins_config.output_dir;
+    let package_name = jenkins_config.package_name;
+    let execution_model = jenkins_config.execution_model;
+    let json_output = jenkins_config.json_output;
+    let stubs = jenkins_config.stubs;
+
+    let command_tree = read_source(project_path)?;
 
     render_types::jenkins_library::render(
         &command_tree,
@@ -45,5 +50,12 @@ pub fn generate_jenkins(
         package_name,
         execution_model,
         json_output,
+        stubs,
     )
+}
+
+fn read_source(project_path: &Path) -> Result<CommandInfo, String> {
+    let binary_name = read_binary_name(project_path)?;
+
+    analyze_project_source(project_path, &binary_name)
 }

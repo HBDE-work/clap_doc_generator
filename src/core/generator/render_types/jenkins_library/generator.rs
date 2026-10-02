@@ -12,7 +12,10 @@ pub fn render(
     package_name: &str,
     execution_model: ExecutionModel,
     json_output: bool,
+    stubs: bool,
 ) -> Result<(), String> {
+    let _stubs = stubs; //TODO: implement stub creation when this flag is true
+
     let class_name = to_pascal_case(&command.name);
     let binary_name = &command.name;
 

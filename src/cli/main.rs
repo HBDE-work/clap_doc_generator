@@ -12,6 +12,11 @@ use clapdocs::ScanOptions;
 use clapdocs::Target;
 use clapdocs::find_projects;
 
+#[cfg(feature = "jenkins")]
+use clapdocs::generator::JenkinsLibraryConfig;
+#[cfg(feature = "markdown")]
+use clapdocs::generator::MarkdownConfig;
+
 fn main() {
     let args = Args::parse();
 
@@ -38,18 +43,21 @@ fn main() {
             let targets = find_or_exit(&options);
 
             run_generation(&targets, "updated", |target| {
-                let readme_path = target.readme_path.as_ref()?;
+                let readme_path = target.readme_path.as_deref()?;
                 print!(
                     "(Crate) '{}' => '{}' ... ",
                     target.name,
                     readme_path.display()
                 );
-                Some(generate_docs(
-                    &target.project_path,
+
+                let markdown_config = MarkdownConfig {
+                    project_path: &target.project_path,
                     readme_path,
-                    &start_marker,
-                    &end_marker,
-                ))
+                    start_marker: &start_marker,
+                    end_marker: &end_marker,
+                };
+
+                Some(generate_docs(markdown_config))
             });
         }
         #[cfg(feature = "jenkins")]
@@ -58,6 +66,7 @@ fn main() {
             package_name,
             execution_model,
             json_output,
+            stubs,
         } => {
             use clapdocs::generate_jenkins;
 
@@ -82,13 +91,17 @@ fn main() {
                     target.name,
                     output_dir.display()
                 );
-                Some(generate_jenkins(
-                    &target.project_path,
+
+                let jenkins_config = JenkinsLibraryConfig {
+                    project_path: &target.project_path,
                     output_dir,
-                    &package_name,
+                    package_name: &package_name,
                     execution_model,
                     json_output,
-                ))
+                    stubs,
+                };
+
+                Some(generate_jenkins(jenkins_config))
             });
         }
     }

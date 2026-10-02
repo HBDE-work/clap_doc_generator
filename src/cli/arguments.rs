@@ -59,5 +59,9 @@ pub enum Commands {
         /// Assume all commands emit JSON to stdout
         #[arg(long)]
         json_output: bool,
+
+        /// creates stub files for library code beside the src directory
+        #[arg(long)]
+        stubs: bool,
     },
 }
