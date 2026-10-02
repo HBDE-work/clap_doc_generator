@@ -128,7 +128,7 @@ fn build_arg_info(field: &ParsedField, source: &ParsedSource) -> ArgInfo {
 
     let required = attr
         .required
-        .unwrap_or(matches!(field.type_info, FieldType::Plain(_)) && !is_flag);
+        .unwrap_or(matches!(field.type_info, FieldType::Plain(_)) && !is_flag && default.is_none());
 
     let long_name = resolve_long_name(attr.long.as_deref(), &field.name);
 
@@ -224,4 +224,126 @@ fn build_signature(field: &ParsedField, value_name: &str) -> String {
     }
 
     sig
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::generator::model_parsed::ArgAttr;
+    use crate::generator::model_parsed::CommandAttr;
+
+    fn parsed_field(name: &str, type_info: FieldType, attr: ArgAttr) -> ParsedField {
+        ParsedField {
+            name: name.to_string(),
+            doc_comment: String::new(),
+            arg_attr: attr,
+            role: FieldRole::Normal,
+            type_info,
+            inner_type_name: None,
+        }
+    }
+
+    fn command_info_for(field: ParsedField) -> CommandInfo {
+        let parsed_struct = ParsedStruct {
+            name: "DemoArgs".to_string(),
+            command_attr: CommandAttr::default(),
+            doc_comment: String::new(),
+            fields: vec![field],
+        };
+
+        build_command_info("demo", &parsed_struct, &ParsedSource::default())
+    }
+
+    #[test]
+    fn plain_field_with_default_value_t_is_not_required() {
+        let attr = ArgAttr {
+            long: Some("queue-poll-interval".to_string()),
+            default_value_t: Some("5".to_string()),
+            ..Default::default()
+        };
+        let command_info = command_info_for(parsed_field(
+            "queue_poll_interval",
+            FieldType::Plain("u64".to_string()),
+            attr,
+        ));
+
+        let arg = &command_info.args[0];
+        assert!(
+            !arg.required,
+            "a Plain field with a default_value_t should not be required"
+        );
+        assert_eq!(arg.default.as_deref(), Some("5"));
+    }
+
+    #[test]
+    fn plain_field_with_default_value_is_not_required() {
+        let attr = ArgAttr {
+            long: Some("name".to_string()),
+            default_value: Some("default-name".to_string()),
+            ..Default::default()
+        };
+        let command_info = command_info_for(parsed_field(
+            "name",
+            FieldType::Plain("String".to_string()),
+            attr,
+        ));
+
+        let arg = &command_info.args[0];
+        assert!(
+            !arg.required,
+            "a Plain field with a default_value should not be required"
+        );
+    }
+
+    #[test]
+    fn plain_field_without_default_remains_required() {
+        let attr = ArgAttr {
+            long: Some("job".to_string()),
+            ..Default::default()
+        };
+        let command_info = command_info_for(parsed_field(
+            "job",
+            FieldType::Plain("String".to_string()),
+            attr,
+        ));
+
+        let arg = &command_info.args[0];
+        assert!(
+            arg.required,
+            "a Plain field without a default should remain required"
+        );
+    }
+
+    #[test]
+    fn flag_field_remains_optional_without_default() {
+        let attr = ArgAttr {
+            long: Some("verbose".to_string()),
+            ..Default::default()
+        };
+        let command_info = command_info_for(parsed_field("verbose", FieldType::Bool, attr));
+
+        let arg = &command_info.args[0];
+        assert!(!arg.required, "a bool flag should never be required");
+    }
+
+    #[test]
+    fn explicit_required_true_overrides_default_presence() {
+        let attr = ArgAttr {
+            long: Some("force".to_string()),
+            default_value_t: Some("1".to_string()),
+            required: Some(true),
+            ..Default::default()
+        };
+        let command_info = command_info_for(parsed_field(
+            "force",
+            FieldType::Plain("u8".to_string()),
+            attr,
+        ));
+
+        let arg = &command_info.args[0];
+        assert!(
+            arg.required,
+            "an explicit #[arg(required = true)] should override default-based inference"
+        );
+    }
 }

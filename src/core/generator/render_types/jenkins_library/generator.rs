@@ -14,8 +14,6 @@ pub fn render(
     json_output: bool,
     stubs: bool,
 ) -> Result<(), String> {
-    let _stubs = stubs; //TODO: implement stub creation when this flag is true
-
     let class_name = to_pascal_case(&command.name);
     let binary_name = &command.name;
 
@@ -50,6 +48,25 @@ pub fn render(
     let vars_file = vars_dir.join(format!("{vars_file_name}.groovy"));
     fs::write(&vars_file, vars_content)
         .map_err(|err| format!("Failed to write {}: {err}", vars_file.display()))?;
+
+    if stubs {
+        let stub_content = render_stub_src_class(
+            command,
+            &class_name,
+            package_name,
+            &global_args,
+            execution_model,
+            json_output,
+        );
+
+        let stub_src_dir = output_dir.join("src").join("stubs").join(&package_path);
+        fs::create_dir_all(&stub_src_dir)
+            .map_err(|err| format!("Failed to create stubs src directory: {err}"))?;
+
+        let stub_src_file = stub_src_dir.join(format!("{class_name}.groovy"));
+        fs::write(&stub_src_file, stub_content)
+            .map_err(|err| format!("Failed to write {}: {err}", stub_src_file.display()))?;
+    }
 
     Ok(())
 }
@@ -139,13 +156,14 @@ fn render_src_class(
     output
 }
 
-fn render_constructor(
-    output: &mut String,
-    class_name: &str,
-    binary_name: &str,
+/// Builds the constructor (and stub constructor)
+///
+/// `pipeline` (for non-JVM execution models) followed by
+/// each global arg as individually-typed, defaulted parameter
+fn build_constructor_params(
     global_args: &[&ArgInfo],
     execution_model: ExecutionModel,
-) {
+) -> Vec<String> {
     let mut params = Vec::new();
     if execution_model != ExecutionModel::Jvm {
         params.push("Script pipeline".to_string());
@@ -159,6 +177,18 @@ fn render_constructor(
             arg_default_literal(arg)
         ));
     }
+
+    params
+}
+
+fn render_constructor(
+    output: &mut String,
+    class_name: &str,
+    binary_name: &str,
+    global_args: &[&ArgInfo],
+    execution_model: ExecutionModel,
+) {
+    let params = build_constructor_params(global_args, execution_model);
 
     render_signature(output, &format!("    {class_name}"), &params);
 
@@ -174,6 +204,62 @@ fn render_constructor(
     }
 
     let _ = writeln!(output, "    }}");
+}
+
+fn build_method_params(required_args: &[&ArgInfo], optional_args: &[&ArgInfo]) -> Vec<String> {
+    let mut params: Vec<String> = required_args
+        .iter()
+        .map(|arg| {
+            let groovy_type = if arg.is_repeatable { "List" } else { "Object" };
+            format!("{groovy_type} {}", to_camel_case(&arg.field_name))
+        })
+        .collect();
+
+    for arg in optional_args {
+        let groovy_type = if arg.is_flag {
+            "boolean"
+        } else if arg.is_repeatable {
+            "List"
+        } else {
+            "Object"
+        };
+        params.push(format!(
+            "{groovy_type} {} = {}",
+            to_camel_case(&arg.field_name),
+            arg_default_literal(arg)
+        ));
+    }
+
+    params
+}
+
+fn render_optional_args_assembly(output: &mut String, optional_args: &[&ArgInfo]) {
+    for arg in optional_args {
+        let camel = to_camel_case(&arg.field_name);
+        let Some(token) = arg_flag_token(arg) else {
+            continue;
+        };
+
+        if arg.is_count {
+            render_count_arg_assembly(output, &camel, &camel, &token);
+        } else if arg.is_flag {
+            let _ = writeln!(output, "        if ({camel}) {{");
+            let _ = writeln!(output, "            command.add('{token}')");
+            let _ = writeln!(output, "        }}");
+        } else if arg.is_repeatable {
+            let _ = writeln!(output, "        if ({camel} != null) {{");
+            let _ = writeln!(output, "            {camel}.each {{ entry ->");
+            let _ = writeln!(output, "                command.add('{token}')");
+            let _ = writeln!(output, "                command.add(entry.toString())");
+            let _ = writeln!(output, "            }}");
+            let _ = writeln!(output, "        }}");
+        } else {
+            let _ = writeln!(output, "        if ({camel} != null) {{");
+            let _ = writeln!(output, "            command.add('{token}')");
+            let _ = writeln!(output, "            command.add({camel}.toString())");
+            let _ = writeln!(output, "        }}");
+        }
+    }
 }
 
 fn render_subcommand_method(
@@ -193,14 +279,7 @@ fn render_subcommand_method(
     let required_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| a.required).collect();
     let optional_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| !a.required).collect();
 
-    let mut params = Vec::new();
-    for arg in &required_args {
-        let groovy_type = if arg.is_repeatable { "List" } else { "Object" };
-        params.push(format!("{groovy_type} {}", to_camel_case(&arg.field_name)));
-    }
-    if !optional_args.is_empty() {
-        params.push("Map options = [:]".to_string());
-    }
+    let params = build_method_params(&required_args, &optional_args);
 
     let return_type = if json_output { "Map" } else { "String" };
     render_signature(output, &format!("    {return_type} {method_name}"), &params);
@@ -242,33 +321,7 @@ fn render_subcommand_method(
 
     if !optional_args.is_empty() {
         let _ = writeln!(output);
-        for arg in &optional_args {
-            let camel = to_camel_case(&arg.field_name);
-            let Some(token) = arg_flag_token(arg) else {
-                continue;
-            };
-            let accessor = format!("options.get('{camel}')");
-
-            if arg.is_count {
-                render_count_arg_assembly(output, &camel, &accessor, &token);
-            } else if arg.is_flag {
-                let _ = writeln!(output, "        if ({accessor}) {{");
-                let _ = writeln!(output, "            command.add('{token}')");
-                let _ = writeln!(output, "        }}");
-            } else if arg.is_repeatable {
-                let _ = writeln!(output, "        if ({accessor} != null) {{");
-                let _ = writeln!(output, "            {accessor}.each {{ entry ->");
-                let _ = writeln!(output, "                command.add('{token}')");
-                let _ = writeln!(output, "                command.add(entry.toString())");
-                let _ = writeln!(output, "            }}");
-                let _ = writeln!(output, "        }}");
-            } else {
-                let _ = writeln!(output, "        if ({accessor} != null) {{");
-                let _ = writeln!(output, "            command.add('{token}')");
-                let _ = writeln!(output, "            command.add({accessor}.toString())");
-                let _ = writeln!(output, "        }}");
-            }
-        }
+        render_optional_args_assembly(output, &optional_args);
     }
 
     let _ = writeln!(output);
@@ -285,14 +338,7 @@ fn render_direct_invocation_method(output: &mut String, command: &CommandInfo, j
         .filter(|a| !a.required && !a.is_positional)
         .collect();
 
-    let mut params = Vec::new();
-    for arg in &required_args {
-        let groovy_type = if arg.is_repeatable { "List" } else { "Object" };
-        params.push(format!("{groovy_type} {}", to_camel_case(&arg.field_name)));
-    }
-    if !optional_args.is_empty() {
-        params.push("Map options = [:]".to_string());
-    }
+    let params = build_method_params(&required_args, &optional_args);
 
     let return_type = if json_output { "Map" } else { "String" };
     render_signature(output, &format!("    {return_type} run"), &params);
@@ -327,33 +373,7 @@ fn render_direct_invocation_method(output: &mut String, command: &CommandInfo, j
     }
 
     if !optional_args.is_empty() {
-        for arg in &optional_args {
-            let camel = to_camel_case(&arg.field_name);
-            let Some(token) = arg_flag_token(arg) else {
-                continue;
-            };
-            let accessor = format!("options.get('{camel}')");
-
-            if arg.is_count {
-                render_count_arg_assembly(output, &camel, &accessor, &token);
-            } else if arg.is_flag {
-                let _ = writeln!(output, "        if ({accessor}) {{");
-                let _ = writeln!(output, "            command.add('{token}')");
-                let _ = writeln!(output, "        }}");
-            } else if arg.is_repeatable {
-                let _ = writeln!(output, "        if ({accessor} != null) {{");
-                let _ = writeln!(output, "            {accessor}.each {{ entry ->");
-                let _ = writeln!(output, "                command.add('{token}')");
-                let _ = writeln!(output, "                command.add(entry.toString())");
-                let _ = writeln!(output, "            }}");
-                let _ = writeln!(output, "        }}");
-            } else {
-                let _ = writeln!(output, "        if ({accessor} != null) {{");
-                let _ = writeln!(output, "            command.add('{token}')");
-                let _ = writeln!(output, "            command.add({accessor}.toString())");
-                let _ = writeln!(output, "        }}");
-            }
-        }
+        render_optional_args_assembly(output, &optional_args);
     }
 
     let _ = writeln!(output);
@@ -516,6 +536,98 @@ fn pipeline_step_name(execution_model: ExecutionModel) -> Option<&'static str> {
     }
 }
 
+fn render_stub_src_class(
+    command: &CommandInfo,
+    class_name: &str,
+    package_name: &str,
+    global_args: &[&ArgInfo],
+    execution_model: ExecutionModel,
+    json_output: bool,
+) -> String {
+    let mut output = String::new();
+
+    let _ = writeln!(output, "#!/usr/bin/env groovy");
+    let _ = writeln!(output, "package {package_name}");
+    let _ = writeln!(output);
+    let _ = writeln!(output, "import groovy.transform.CompileDynamic");
+    let _ = writeln!(output);
+
+    if !command.about.is_empty() {
+        let _ = writeln!(output, "/**");
+        let _ = writeln!(output, " * {}", command.about);
+        let _ = writeln!(output, " *");
+        let _ = writeln!(
+            output,
+            " * Auto-generated stub by `clapdocs jenkins --stubs`"
+        );
+        let _ = writeln!(output, " */");
+    }
+
+    let _ = writeln!(output, "@CompileDynamic");
+    let _ = writeln!(output, "class {class_name} implements Serializable {{");
+    let _ = writeln!(output);
+
+    let ctor_params = build_constructor_params(global_args, execution_model);
+    render_signature(&mut output, &format!("    {class_name}"), &ctor_params);
+    let _ = writeln!(output, " {{}}");
+    let _ = writeln!(output);
+
+    for sub in &command.subcommands {
+        render_stub_subcommand_method(&mut output, sub, json_output);
+        let _ = writeln!(output);
+    }
+
+    if command.subcommands.is_empty() {
+        render_stub_direct_invocation_method(&mut output, command, json_output);
+        let _ = writeln!(output);
+    }
+
+    render_stub_version_method(&mut output);
+
+    let _ = writeln!(output, "}}");
+    output
+}
+
+fn render_stub_subcommand_method(output: &mut String, sub: &CommandInfo, json_output: bool) {
+    let method_name = to_camel_case(&sub.name);
+
+    if !sub.about.is_empty() {
+        let _ = writeln!(output, "    /**");
+        let _ = writeln!(output, "     * {}", sub.about);
+        let _ = writeln!(output, "     */");
+    }
+
+    let required_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| a.required).collect();
+    let optional_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| !a.required).collect();
+    let params = build_method_params(&required_args, &optional_args);
+
+    let return_type = if json_output { "Map" } else { "String" };
+    render_signature(output, &format!("    {return_type} {method_name}"), &params);
+    let _ = writeln!(output, " {{}}");
+}
+
+fn render_stub_direct_invocation_method(
+    output: &mut String,
+    command: &CommandInfo,
+    json_output: bool,
+) {
+    let required_args: Vec<&ArgInfo> = command.args.iter().filter(|a| a.required).collect();
+    let optional_args: Vec<&ArgInfo> = command
+        .args
+        .iter()
+        .filter(|a| !a.required && !a.is_positional)
+        .collect();
+    let params = build_method_params(&required_args, &optional_args);
+
+    let return_type = if json_output { "Map" } else { "String" };
+    render_signature(output, &format!("    {return_type} run"), &params);
+    let _ = writeln!(output, " {{}}");
+}
+
+fn render_stub_version_method(output: &mut String) {
+    let _ = writeln!(output, "    String version() {{}}");
+}
+
 fn render_vars_entry(
     class_name: &str,
     package_name: &str,
@@ -528,8 +640,10 @@ fn render_vars_entry(
     let _ = writeln!(output, "import {package_name}.{class_name}");
     let _ = writeln!(output);
 
+    let mut call_params = vec!["Map config = [:]".to_string()];
     let mut ctor_args = Vec::new();
     if execution_model != ExecutionModel::Jvm {
+        call_params.push("Script pipeline".to_string());
         ctor_args.push("pipeline".to_string());
     }
     for arg in global_args {
@@ -540,14 +654,8 @@ fn render_vars_entry(
         ));
     }
 
-    if execution_model == ExecutionModel::Jvm {
-        let _ = writeln!(output, "{class_name} call(Map config = [:]) {{");
-    } else {
-        let _ = writeln!(
-            output,
-            "{class_name} call(Script pipeline, Map config = [:]) {{"
-        );
-    }
+    render_signature(&mut output, &format!("{class_name} call"), &call_params);
+    let _ = writeln!(output, " {{");
     render_signature(
         &mut output,
         &format!("    return new {class_name}"),
@@ -617,4 +725,148 @@ fn arg_default_literal(arg: &ArgInfo) -> String {
 
 fn escape_groovy_string(value: &str) -> String {
     value.replace('\\', "\\\\").replace('\'', "\\'")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn sample_arg(field_name: &str, long_name: &str, required: bool, is_flag: bool) -> ArgInfo {
+        ArgInfo {
+            field_name: field_name.to_string(),
+            signature: String::new(),
+            long_name: Some(long_name.to_string()),
+            short_name: None,
+            help: String::new(),
+            default: None,
+            required,
+            is_flag,
+            is_positional: false,
+            is_repeatable: false,
+            is_count: false,
+            env: None,
+            possible_values: Vec::new(),
+        }
+    }
+
+    fn sample_command() -> CommandInfo {
+        CommandInfo {
+            name: "demo".to_string(),
+            about: "Demo CLI".to_string(),
+            args: vec![sample_arg("verbose", "verbose", false, true)],
+            subcommands: vec![CommandInfo {
+                name: "build".to_string(),
+                about: "Builds the thing".to_string(),
+                args: vec![
+                    sample_arg("target", "target", true, false),
+                    sample_arg("retries", "retries", false, false),
+                ],
+                subcommands: Vec::new(),
+            }],
+        }
+    }
+
+    #[test]
+    fn render_with_stubs_writes_signature_only_stub() {
+        let command = sample_command();
+        let dir = tempdir().expect("failed to create temp dir");
+
+        render(
+            &command,
+            dir.path(),
+            "groovypackage",
+            ExecutionModel::Sh,
+            false,
+            true,
+        )
+        .expect("render should succeed");
+
+        let real_file = dir.path().join("src/groovypackage/Demo.groovy");
+        let stub_file = dir.path().join("src/stubs/groovypackage/Demo.groovy");
+        assert!(real_file.exists(), "real implementation file should exist");
+        assert!(stub_file.exists(), "stub file should exist under src/stubs");
+
+        let real_content = fs::read_to_string(&real_file).expect("read real file");
+        let stub_content = fs::read_to_string(&stub_file).expect("read stub file");
+
+        assert!(real_content.contains("private String exec("));
+        assert!(real_content.contains("private final"));
+
+        assert!(!stub_content.contains("private String exec("));
+        assert!(!stub_content.contains("private final"));
+        assert!(stub_content.contains("String build(Object target, Object retries = null) {}"));
+        assert!(stub_content.contains("String version() {}"));
+
+        assert!(!dir.path().join("vars/stubs").exists());
+    }
+
+    #[test]
+    fn render_optional_args_as_explicit_defaulted_params() {
+        let command = sample_command();
+        let dir = tempdir().expect("failed to create temp dir");
+
+        render(
+            &command,
+            dir.path(),
+            "groovypackage",
+            ExecutionModel::Sh,
+            false,
+            false,
+        )
+        .expect("render should succeed");
+
+        let real_file = dir.path().join("src/groovypackage/Demo.groovy");
+        let content = fs::read_to_string(&real_file).expect("read real file");
+
+        assert!(!content.contains("Map options"));
+        assert!(!content.contains(".get("));
+        assert!(content.contains("String build(Object target, Object retries = null) {"));
+        assert!(content.contains("if (retries != null) {"));
+        assert!(content.contains("command.add(retries.toString())"));
+    }
+
+    #[test]
+    fn render_without_stubs_creates_no_stub_directory() {
+        let command = sample_command();
+        let dir = tempdir().expect("failed to create temp dir");
+
+        render(
+            &command,
+            dir.path(),
+            "groovypackage",
+            ExecutionModel::Sh,
+            false,
+            false,
+        )
+        .expect("render should succeed");
+
+        assert!(dir.path().join("src/groovypackage/Demo.groovy").exists());
+        assert!(!dir.path().join("src/stubs").exists());
+    }
+
+    #[test]
+    fn vars_call_accepts_map_before_pipeline_for_named_args() {
+        let command = sample_command();
+        let dir = tempdir().expect("failed to create temp dir");
+
+        render(
+            &command,
+            dir.path(),
+            "groovypackage",
+            ExecutionModel::Sh,
+            false,
+            false,
+        )
+        .expect("render should succeed");
+
+        let real_content = fs::read_to_string(dir.path().join("src/groovypackage/Demo.groovy"))
+            .expect("read real file");
+        assert!(real_content.contains("Demo(Script pipeline, boolean verbose = false) {"));
+
+        let vars_content =
+            fs::read_to_string(dir.path().join("vars/demo.groovy")).expect("read vars file");
+        assert!(vars_content.contains("Demo call(Map config = [:], Script pipeline) {"));
+        assert!(vars_content.contains("return new Demo(pipeline, config.get('verbose', false))"));
+    }
 }

@@ -90,7 +90,7 @@ the ideal case is that the binary will always create valid json output
 ```toml
 # Cargo.toml
 [build-dependencies]
-clap_doc_generator = { version = "0.3.1", features = ["jenkins"]}
+clap_doc_generator = { version = "0.3.1", features = ["markdown", "jenkins"]}
 ```
 
 ```rust
