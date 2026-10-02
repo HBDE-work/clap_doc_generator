@@ -50,12 +50,12 @@ fn main() {
                     readme_path.display()
                 );
 
-                let markdown_config = MarkdownConfig {
-                    project_path: &target.project_path,
+                let markdown_config = MarkdownConfig::from(
+                    &target.project_path,
                     readme_path,
-                    start_marker: &start_marker,
-                    end_marker: &end_marker,
-                };
+                    &start_marker,
+                    &end_marker,
+                );
 
                 Some(generate_docs(markdown_config))
             });
@@ -92,14 +92,14 @@ fn main() {
                     output_dir.display()
                 );
 
-                let jenkins_config = JenkinsLibraryConfig {
-                    project_path: &target.project_path,
+                let jenkins_config = JenkinsLibraryConfig::from(
+                    &target.project_path,
                     output_dir,
-                    package_name: &package_name,
+                    &package_name,
                     execution_model,
                     json_output,
                     stubs,
-                };
+                );
 
                 Some(generate_jenkins(jenkins_config))
             });

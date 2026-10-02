@@ -60,7 +60,7 @@ pub enum Commands {
         #[arg(long)]
         json_output: bool,
 
-        /// creates stub files for library code beside the src directory
+        /// creates stub files for groovy library code
         #[arg(long)]
         stubs: bool,
     },

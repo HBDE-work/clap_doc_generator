@@ -35,23 +35,24 @@ This installs the binary as `clapdocs` in your Cargo bin directory
 ## CLI Reference
 
 <!-- CLAP_DOC_GEN_START -->
+
 **Usage:** `clapdocs [OPTIONS] <COMMAND>`
 
 Extract clap CLI definitions from Rust source code and generate documentation or language bindings
 
 #### Options
 
-| Options | Description | Default |
-|------|------|------|
-| `-d, --directory <DIRECTORY>` | The directory to scan for Rust projects with clap | `.` |
-| `-r, --recursive` | Recursively scan subdirectories for projects |  |
+| Options                       | Description                                       | Default |
+| ----------------------------- | ------------------------------------------------- | ------- |
+| `-d, --directory <DIRECTORY>` | The directory to scan for Rust projects with clap | `.`     |
+| `-r, --recursive`             | Recursively scan subdirectories for projects      |         |
 
 #### Commands
 
-| Command | Description |
-|---------|-------------|
-| `markdown` | Create clap reference in markdown syntax |
-| `jenkins` | Create rust binary cli wrapper for jenkins libraries |
+| Command    | Description                                          |
+| ---------- | ---------------------------------------------------- |
+| `markdown` | Create clap reference in markdown syntax             |
+| `jenkins`  | Create rust binary cli wrapper for jenkins libraries |
 
 ### `clapdocs markdown`
 
@@ -59,11 +60,11 @@ Create clap reference in markdown syntax
 
 #### Options
 
-| Options | Description | Default |
-|------|------|------|
-| `--name <NAME>` | The name of the readme file to update | `readme.md` |
+| Options                         | Description                                   | Default                       |
+| ------------------------------- | --------------------------------------------- | ----------------------------- |
+| `--name <NAME>`                 | The name of the readme file to update         | `readme.md`                   |
 | `--start-marker <START-MARKER>` | Marker for the start of the generated section | `<!-- CLAP_DOC_GEN_START -->` |
-| `--end-marker <END-MARKER>` | Marker for the end of the generated section | `<!-- CLAP_DOC_GEN_END -->` |
+| `--end-marker <END-MARKER>`     | Marker for the end of the generated section   | `<!-- CLAP_DOC_GEN_END -->`   |
 
 ### `clapdocs jenkins`
 
@@ -71,13 +72,13 @@ Create rust binary cli wrapper for jenkins libraries
 
 #### Options
 
-| Options | Description | Default | Values |
-|------|------|------|------|
-| `-o, --output-dir <OUTPUT-DIR>` | Output directory for generated files |  |  |
-| `--package-name <PACKAGE-NAME>` | Package path prefix for generated Groovy classes | `groovypackage` |  |
-| `--execution-model <EXECUTION-MODEL>` | Execution model used by generated code to invoke the wrapped binary | `sh` | `sh`, `ps`, `bat`, `jvm` |
-| `--json-output` | Assume all commands emit JSON to stdout |  |  |
-| `--stubs` | creates stub files for library code beside the src directory |  |  |
+| Options                               | Description                                                         | Default         | Values                   |
+| ------------------------------------- | ------------------------------------------------------------------- | --------------- | ------------------------ |
+| `-o, --output-dir <OUTPUT-DIR>`       | Output directory for generated files                                |                 |                          |
+| `--package-name <PACKAGE-NAME>`       | Package path prefix for generated Groovy classes                    | `groovypackage` |                          |
+| `--execution-model <EXECUTION-MODEL>` | Execution model used by generated code to invoke the wrapped binary | `sh`            | `sh`, `ps`, `bat`, `jvm` |
+| `--json-output`                       | Assume all commands emit JSON to stdout                             |                 |                          |
+| `--stubs`                             | creates stub files for groovy library code                          |                 |                          |
 
 <!-- CLAP_DOC_GEN_END -->
 
@@ -108,23 +109,23 @@ fn main() -> Result<(), String> {
 
     // generate CLI Documentation in Markdown
     let readme_path = &project_path.join("readme.md");
-    let markdown_config = clapdocs::generator::MarkdownConfig {
+    let markdown_config = clapdocs::generator::MarkdownConfig::from(
         project_path,
         readme_path,
-        start_marker: "<!-- CLAP_DOC_GEN_START -->",
-        end_marker: "<!-- CLAP_DOC_GEN_END -->",
-    };
+        "<!-- CLAP_DOC_GEN_START -->",
+        "<!-- CLAP_DOC_GEN_END -->",
+    );
     clapdocs::generate_docs(markdown_config)?;
 
     // generate Jenkins Library Glue with stubs
-    let jenkins_config = clapdocs::generator::JenkinsLibraryConfig {
+    let jenkins_config = clapdocs::generator::JenkinsLibraryConfig::from(
         project_path,
-        output_dir: out_dir.as_path(),
-        package_name: groovypackage_name,
-        execution_model: clapdocs::ExecutionModel::Jvm,
-        json_output: true,
-        stubs: true,
-    };
+        out_dir.as_path(),
+        groovypackage_name,
+        clapdocs::ExecutionModel::Jvm,
+        true,
+        true,
+    );
     clapdocs::generate_jenkins(jenkins_config)?;
 }
 ```
