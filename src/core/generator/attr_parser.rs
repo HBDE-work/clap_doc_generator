@@ -18,14 +18,16 @@ pub fn extract_doc_comment(attrs: &[Attribute]) -> String {
                 && let Expr::Lit(expr_lit) = &nv.value
                 && let Lit::Str(lit_str) = &expr_lit.lit
             {
-                Some(lit_str.value().trim().to_string())
+                let value = lit_str.value();
+                let line = value.strip_prefix(' ').unwrap_or(&value);
+                Some(line.trim_end().to_string())
             } else {
                 None
             }
         })
         .collect();
 
-    lines.join(" ")
+    lines.join("\n").trim().to_string()
 }
 
 pub fn extract_command_attr(attrs: &[Attribute]) -> CommandAttr {

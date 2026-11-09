@@ -42,6 +42,7 @@ pub struct ArgInfo {
 pub struct CommandInfo {
     pub name: String,
     pub about: String,
+    pub long_about: String,
     pub args: Vec<ArgInfo>,
     pub subcommands: Vec<CommandInfo>,
 }

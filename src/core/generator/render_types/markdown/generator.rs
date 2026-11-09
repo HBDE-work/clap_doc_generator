@@ -2,6 +2,7 @@ use std::fmt::Write;
 
 use crate::generator::model_command::ArgInfo;
 use crate::generator::model_command::CommandInfo;
+use crate::generator::utils::flatten_whitespace;
 
 pub fn render(command: &CommandInfo) -> String {
     let mut output = String::new();
@@ -154,5 +155,5 @@ fn render_args_table(output: &mut String, heading: &str, args: &[&ArgInfo]) {
 }
 
 fn escape_pipes(text: &str) -> String {
-    text.replace('|', "\\|")
+    flatten_whitespace(text).replace('|', "\\|")
 }

@@ -270,11 +270,7 @@ fn render_subcommand_method(
 ) {
     let method_name = to_camel_case(&sub.name);
 
-    if !sub.about.is_empty() {
-        let _ = writeln!(output, "    /**");
-        let _ = writeln!(output, "     * {}", sub.about);
-        let _ = writeln!(output, "     */");
-    }
+    render_method_javadoc(output, sub);
 
     let required_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| a.required).collect();
     let optional_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| !a.required).collect();
@@ -588,14 +584,30 @@ fn render_stub_src_class(
     output
 }
 
+fn render_method_javadoc(output: &mut String, sub: &CommandInfo) {
+    let text = if sub.long_about.is_empty() {
+        &sub.about
+    } else {
+        &sub.long_about
+    };
+    if text.is_empty() {
+        return;
+    }
+    let _ = writeln!(output, "    /**");
+    for line in text.lines() {
+        if line.is_empty() {
+            let _ = writeln!(output, "     *");
+        } else {
+            let _ = writeln!(output, "     * {line}");
+        }
+    }
+    let _ = writeln!(output, "     */");
+}
+
 fn render_stub_subcommand_method(output: &mut String, sub: &CommandInfo, json_output: bool) {
     let method_name = to_camel_case(&sub.name);
 
-    if !sub.about.is_empty() {
-        let _ = writeln!(output, "    /**");
-        let _ = writeln!(output, "     * {}", sub.about);
-        let _ = writeln!(output, "     */");
-    }
+    render_method_javadoc(output, sub);
 
     let required_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| a.required).collect();
     let optional_args: Vec<&ArgInfo> = sub.args.iter().filter(|a| !a.required).collect();
@@ -754,16 +766,48 @@ mod tests {
         CommandInfo {
             name: "demo".to_string(),
             about: "Demo CLI".to_string(),
+            long_about: String::new(),
             args: vec![sample_arg("verbose", "verbose", false, true)],
             subcommands: vec![CommandInfo {
                 name: "build".to_string(),
                 about: "Builds the thing".to_string(),
+                long_about: String::new(),
                 args: vec![
                     sample_arg("target", "target", true, false),
                     sample_arg("retries", "retries", false, false),
                 ],
                 subcommands: Vec::new(),
             }],
+        }
+    }
+
+    #[test]
+    fn render_emits_multiline_long_about_in_javadoc() {
+        let mut command = sample_command();
+        command.subcommands[0].long_about =
+            "Builds it.\n\nReturns {\n  \"ok\": true\n}".to_string();
+        let dir = tempdir().expect("failed to create temp dir");
+
+        render(
+            &command,
+            dir.path(),
+            "groovypackage",
+            ExecutionModel::Sh,
+            false,
+            true,
+        )
+        .expect("render should succeed");
+
+        for path in [
+            "src/groovypackage/Demo.groovy",
+            "src/stubs/groovypackage/Demo.groovy",
+        ] {
+            let content = fs::read_to_string(dir.path().join(path)).expect("read file");
+            let expected = "    /**\n     * Builds it.\n     *\n     * Returns {\n     *   \"ok\": true\n     * }\n     */\n";
+            assert!(
+                content.contains(expected),
+                "missing javadoc in {path}:\n{content}"
+            );
         }
     }
 

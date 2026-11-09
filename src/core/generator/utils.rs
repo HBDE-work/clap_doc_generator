@@ -64,8 +64,13 @@ pub fn update_readme(
     Ok(())
 }
 
+pub fn flatten_whitespace(text: &str) -> String {
+    text.split_whitespace().collect::<Vec<_>>().join(" ")
+}
+
 pub fn first_sentence(text: &str) -> String {
-    let trimmed = text.trim();
+    let flattened = flatten_whitespace(text);
+    let trimmed = flattened.as_str();
     if let Some(dot_pos) = trimmed.find(". ") {
         trimmed[..=dot_pos].to_string()
     } else {

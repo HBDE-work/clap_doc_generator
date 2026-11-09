@@ -8,6 +8,7 @@ use super::model_parsed::ParsedSource;
 use super::model_parsed::ParsedStruct;
 use super::model_parsed::ParsedVariant;
 use super::utils::first_sentence;
+use super::utils::flatten_whitespace;
 use super::utils::to_kebab_case;
 
 pub fn build_command_info(
@@ -29,6 +30,7 @@ pub fn build_command_info(
     CommandInfo {
         name: name.to_string(),
         about,
+        long_about: String::new(),
         args,
         subcommands,
     }
@@ -80,6 +82,7 @@ fn build_subcommand(variant: &ParsedVariant, source: &ParsedSource) -> CommandIn
         .unwrap_or_else(|| to_kebab_case(&variant.name));
 
     let about = first_sentence(&variant.doc_comment);
+    let long_about = variant.doc_comment.clone();
 
     let mut args = Vec::new();
     let mut subcommands = Vec::new();
@@ -97,6 +100,7 @@ fn build_subcommand(variant: &ParsedVariant, source: &ParsedSource) -> CommandIn
     CommandInfo {
         name: command_name,
         about,
+        long_about,
         args,
         subcommands,
     }
@@ -109,7 +113,7 @@ fn build_arg_info(field: &ParsedField, source: &ParsedSource) -> ArgInfo {
         .help
         .clone()
         .or_else(|| attr.long_help.clone())
-        .unwrap_or_else(|| field.doc_comment.clone());
+        .unwrap_or_else(|| flatten_whitespace(&field.doc_comment));
 
     let is_flag = matches!(field.type_info, FieldType::Bool);
     let is_positional = attr.short.is_none() && attr.long.is_none();
@@ -345,5 +349,30 @@ mod tests {
             arg.required,
             "an explicit #[arg(required = true)] should override default-based inference"
         );
+    }
+
+    #[test]
+    fn multiline_variant_doc_keeps_long_about_and_flat_markdown_about() {
+        let variant = ParsedVariant {
+            name: "Fetch".to_string(),
+            doc_comment: "Fetches data\n\nReturns {\n  \"ok\": true\n}".to_string(),
+            inner_type_name: None,
+            fields: Vec::new(),
+            rename: None,
+        };
+        let sub = build_subcommand(&variant, &ParsedSource::default());
+
+        assert_eq!(sub.about, "Fetches data Returns { \"ok\": true }");
+        assert_eq!(sub.long_about, variant.doc_comment);
+
+        let root = CommandInfo {
+            name: "demo".to_string(),
+            about: String::new(),
+            long_about: String::new(),
+            args: Vec::new(),
+            subcommands: vec![sub],
+        };
+        let markdown = crate::generator::render_types::markdown::render(&root);
+        assert!(markdown.contains("| `fetch` | Fetches data Returns { \"ok\": true } |"));
     }
 }
