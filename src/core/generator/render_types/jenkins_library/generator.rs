@@ -87,7 +87,7 @@ fn render_src_class(
     let _ = writeln!(output);
     let _ = writeln!(output, "import groovy.transform.CompileDynamic");
     if execution_model == ExecutionModel::Jvm {
-        let _ = writeln!(output, "import groovy.json.JsonSlurper");
+        let _ = writeln!(output, "import groovy.json.JsonSlurperClassic"); // needed for CPS Compliance
     }
     let _ = writeln!(output);
 
@@ -514,10 +514,18 @@ fn render_exec_helpers(output: &mut String, execution_model: ExecutionModel) {
     let _ = writeln!(output);
     let _ = writeln!(output, "    private Map execJson(List<String> command) {{");
     let _ = writeln!(output, "        String json = exec(command)");
+    let _ = writeln!(output, "        try {{");
     let _ = writeln!(
         output,
-        "        return new JsonSlurper().parseText(json) as Map"
+        "             return new JsonSlurperClassic().parseText(json) as Map"
     );
+    let _ = writeln!(output, "        }}");
+    let _ = writeln!(output, "        catch (groovy.json.JsonException err) {{");
+    let _ = writeln!(
+        output,
+        "            throw new IllegalStateException(\"${{this.cmd}} returned invalid JSON: ${{json.take(200)}}\", err)"
+    );
+    let _ = writeln!(output, "        }}");
     let _ = writeln!(output, "    }}");
 }
 
@@ -741,8 +749,13 @@ fn escape_groovy_string(value: &str) -> String {
 
 #[cfg(test)]
 mod tests {
+    fn unique_test_dir(name: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("clapdocs_{}_{name}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create test dir");
+        dir
+    }
     use super::*;
-    use tempfile::tempdir;
 
     fn sample_arg(field_name: &str, long_name: &str, required: bool, is_flag: bool) -> ArgInfo {
         ArgInfo {
@@ -786,11 +799,11 @@ mod tests {
         let mut command = sample_command();
         command.subcommands[0].long_about =
             "Builds it.\n\nReturns {\n  \"ok\": true\n}".to_string();
-        let dir = tempdir().expect("failed to create temp dir");
+        let dir = unique_test_dir("render_emits_multiline_long_about_in_javadoc");
 
         render(
             &command,
-            dir.path(),
+            &dir,
             "groovypackage",
             ExecutionModel::Sh,
             false,
@@ -802,7 +815,7 @@ mod tests {
             "src/groovypackage/Demo.groovy",
             "src/stubs/groovypackage/Demo.groovy",
         ] {
-            let content = fs::read_to_string(dir.path().join(path)).expect("read file");
+            let content = fs::read_to_string(dir.join(path)).expect("read file");
             let expected = "    /**\n     * Builds it.\n     *\n     * Returns {\n     *   \"ok\": true\n     * }\n     */\n";
             assert!(
                 content.contains(expected),
@@ -814,11 +827,11 @@ mod tests {
     #[test]
     fn render_with_stubs_writes_signature_only_stub() {
         let command = sample_command();
-        let dir = tempdir().expect("failed to create temp dir");
+        let dir = unique_test_dir("render_with_stubs_writes_signature_only_stub");
 
         render(
             &command,
-            dir.path(),
+            &dir,
             "groovypackage",
             ExecutionModel::Sh,
             false,
@@ -826,8 +839,8 @@ mod tests {
         )
         .expect("render should succeed");
 
-        let real_file = dir.path().join("src/groovypackage/Demo.groovy");
-        let stub_file = dir.path().join("src/stubs/groovypackage/Demo.groovy");
+        let real_file = dir.join("src/groovypackage/Demo.groovy");
+        let stub_file = dir.join("src/stubs/groovypackage/Demo.groovy");
         assert!(real_file.exists(), "real implementation file should exist");
         assert!(stub_file.exists(), "stub file should exist under src/stubs");
 
@@ -842,17 +855,17 @@ mod tests {
         assert!(stub_content.contains("String build(Object target, Object retries = null) {}"));
         assert!(stub_content.contains("String version() {}"));
 
-        assert!(!dir.path().join("vars/stubs").exists());
+        assert!(!dir.join("vars/stubs").exists());
     }
 
     #[test]
     fn render_optional_args_as_explicit_defaulted_params() {
         let command = sample_command();
-        let dir = tempdir().expect("failed to create temp dir");
+        let dir = unique_test_dir("render_optional_args_as_explicit_defaulted_params");
 
         render(
             &command,
-            dir.path(),
+            &dir,
             "groovypackage",
             ExecutionModel::Sh,
             false,
@@ -860,7 +873,7 @@ mod tests {
         )
         .expect("render should succeed");
 
-        let real_file = dir.path().join("src/groovypackage/Demo.groovy");
+        let real_file = dir.join("src/groovypackage/Demo.groovy");
         let content = fs::read_to_string(&real_file).expect("read real file");
 
         assert!(!content.contains("Map options"));
@@ -873,11 +886,11 @@ mod tests {
     #[test]
     fn render_without_stubs_creates_no_stub_directory() {
         let command = sample_command();
-        let dir = tempdir().expect("failed to create temp dir");
+        let dir = unique_test_dir("render_without_stubs_creates_no_stub_directory");
 
         render(
             &command,
-            dir.path(),
+            &dir,
             "groovypackage",
             ExecutionModel::Sh,
             false,
@@ -885,18 +898,18 @@ mod tests {
         )
         .expect("render should succeed");
 
-        assert!(dir.path().join("src/groovypackage/Demo.groovy").exists());
-        assert!(!dir.path().join("src/stubs").exists());
+        assert!(dir.join("src/groovypackage/Demo.groovy").exists());
+        assert!(!dir.join("src/stubs").exists());
     }
 
     #[test]
     fn vars_call_accepts_map_before_pipeline_for_named_args() {
         let command = sample_command();
-        let dir = tempdir().expect("failed to create temp dir");
+        let dir = unique_test_dir("vars_call_accepts_map_before_pipeline_for_named_args");
 
         render(
             &command,
-            dir.path(),
+            &dir,
             "groovypackage",
             ExecutionModel::Sh,
             false,
@@ -904,12 +917,12 @@ mod tests {
         )
         .expect("render should succeed");
 
-        let real_content = fs::read_to_string(dir.path().join("src/groovypackage/Demo.groovy"))
-            .expect("read real file");
+        let real_content =
+            fs::read_to_string(dir.join("src/groovypackage/Demo.groovy")).expect("read real file");
         assert!(real_content.contains("Demo(Script pipeline, boolean verbose = false) {"));
 
         let vars_content =
-            fs::read_to_string(dir.path().join("vars/demo.groovy")).expect("read vars file");
+            fs::read_to_string(dir.join("vars/demo.groovy")).expect("read vars file");
         assert!(vars_content.contains("Demo call(Map config = [:], Script pipeline) {"));
         assert!(vars_content.contains("return new Demo(pipeline, config.get('verbose', false))"));
     }
